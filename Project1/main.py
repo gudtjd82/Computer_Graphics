@@ -1,10 +1,10 @@
 from OpenGL.GL import *
 from glfw.GLFW import *
 import glm
-import ctypes
 import numpy as np
 from shader import load_shaders
 from prepare_vao import *
+from draw import *
 
 g_cam_ang_x = 0.
 g_cam_ang_y = 0.
@@ -94,7 +94,7 @@ def cursor_callback(window, xpos, ypos):
 
 #마우스 버튼 움직임 이벤트 callback 함수
 def button_callback(window, button, action, mod):
-    global mouse_x, mouse_y, mouse_press_x, mouse_press_y, mouse_release_x, mouse_release_y, mouse_click, diff_x_1, diff_y_1, g_cam_ang_x, g_cam_height, pre_diff_x_1, pre_diff_y_1
+    global mouse_x, mouse_y, mouse_press_x, mouse_press_y, mouse_click, diff_x_1, diff_y_1, diff_x_2, diff_y_2, pre_diff_x_1, pre_diff_y_1, pre_diff_x_2, pre_diff_y_2
 
     #Orbit
     if button == GLFW_MOUSE_BUTTON_LEFT:
@@ -115,8 +115,8 @@ def button_callback(window, button, action, mod):
             # print('press left btn: (%d, %d)' % (mouse_x, mouse_y))
         elif action == GLFW_RELEASE:
             mouse_click = 0
-            pre_diff_x_1 = diff_x_1
-            pre_diff_y_1 = diff_y_1
+            pre_diff_x_2 = diff_x_2
+            pre_diff_y_2 = diff_y_2
             # (mouse_release_x, mouse_release_y) = glfwGetCursorPos(window)
             # print('release left btn: (%d, %d)' % (mouse_release_x, mouse_release_y))
             
@@ -134,40 +134,39 @@ def cam_orbit():
     
     diff_x_1 = pre_diff_x_1 + mouse_press_x - mouse_x
     diff_y_1 = pre_diff_y_1 + mouse_press_y - mouse_y
-    g_cam_ang_x = -np.radians(diff_x_1) * 10
-    g_cam_ang_y = -np.radians(diff_y_1) * 10
-    # update_view_mat()
-
-    # diff_x_1 = mouse_press_x - mouse_x
-    # diff_y_1 = mouse_press_y - mouse_y
-    # if g_cam_ang_y > 89:
-    #     g_cam_ang_y = 89
-    # elif g_cam_ang_y < -89:
-    #     g_cam_ang_y = -89
-
-    
-    # g_cam_height = 0.1 + -diff_y_1/1000
-    # print('difference left btn: (%d, %d)' % (diff_x_1, diff_y_1))
+    g_cam_ang_x = -np.radians(diff_x_1)
+    g_cam_ang_y = -np.radians(diff_y_1)
+    sensitive = 15
+    g_cam_ang_x *= sensitive
+    g_cam_ang_y *= sensitive
  
 def cam_pan():
     global diff_x_2, diff_y_2, g_cam_ang_x, g_cam_height
 
-    diff_x_2 = pre_diff_x_2 + mouse_press_x - mouse_x
-    diff_y_2 = pre_diff_y_2 + mouse_press_y - mouse_y
-    
+    diff_x_2 = mouse_press_x - mouse_x
+    diff_y_2 = mouse_press_y - mouse_y
+    sensitive = 0.002
+    diff_x_2 *= -sensitive
+    diff_y_2 *= sensitive*2
+    diff_x_2 += pre_diff_x_2
+    diff_y_2 += pre_diff_y_2
 
 def cam_zoom():
     global diff_x_3, diff_y_3
 
 def update_view_mat():
     global view_mat
+
+    #orbit
     R = glm.mat4(1.0)
     R = glm.rotate(R, glm.radians(g_cam_ang_y), glm.vec3(1,0,0))
     R = glm.rotate(R, glm.radians(g_cam_ang_x), glm.vec3(0,1,0))
-    # eye_vec = glm.rotate(eye_vec, g_cam_ang_y, glm.vec3(1,0,0))
-    # eye_vec = glm.rotate(eye_vec, g_cam_ang_x, glm.vec3(0,1,0))
-    # view_mat = glm.lookAt(glm.vec3(0 , 0.1, 0.1), glm.vec3(0,0,0), glm.vec3(0,1,0))
-    view_mat = glm.lookAt(eye_vec, center_vec, up_vec) * R
+    
+    #pan
+    T = glm.mat4(1.0)
+    T = glm.translate(T, glm.vec3(diff_x_2, diff_y_2, 0))
+
+    view_mat = glm.lookAt(eye_vec, center_vec, up_vec) * T * R
 
 def main():
     global click_V, view_mat, eye_vec, center_vec, up_vec
@@ -200,8 +199,12 @@ def main():
      
     # prepare vaos
     vao_triangle = prepare_vao_triangle()
+    vao_cube = prepare_vao_cube()
     vao_frame = prepare_vao_frame()
+    vao_grid_x = prepare_vao_grid_x()
+    vao_grid_z = prepare_vao_grid_z()
     V = glm.lookAt(glm.vec3(0, .1, .1), glm.vec3(0,0,0), glm.vec3(0,1,0))
+
     # loop until the user closes the window
     while not glfwWindowShouldClose(window):
         # render
@@ -222,26 +225,22 @@ def main():
         if mouse_click == 1:
             cam_orbit()
             update_view_mat()
-            # eye_vec = glm.rotate(eye_vec, g_cam_ang_y, glm.vec3(1,0,0))
-            # eye_vec = glm.rotate(eye_vec, g_cam_ang_x, glm.vec3(0,1,0))
-            # eye_vec = R * eye_vec 
-            # eye_vec = glm.vec3(.1*np.sin(g_cam_ang_x),g_cam_height,.1*np.cos(g_cam_ang_x))
-            # eye_vec = glm.rotate(eye_vec, glm.radians(90), glm.vec3(1,0,0))
-            # eye_vec = glm.rotate(eye_vec, g_cam_ang_y, glm.vec3(0,0,0))
-            # V = glm.lookAt(eye_vec, center_vec, up_vec)
-            # print('difference left btn: (%d, %d)' % (diff_x_1, diff_y_1))
+      
         elif mouse_click == 2:
             cam_pan()
-            change_x = diff_x_2/1000
-            change_y = diff_y_2/1000
-            eye_vec = glm.vec3(.1*np.sin(g_cam_ang_x) + change_x, g_cam_height + change_y,.1*np.cos(g_cam_ang_x) + change_x)
-            center_vec = glm.vec3(change_x, change_y, change_x)
-            V =glm.lookAt(eye_vec, center_vec, up_vec)
+            update_view_mat()
+            # change_x = diff_x_2/1000
+            # change_y = diff_y_2/1000
+            # eye_vec = glm.vec3(.1*np.sin(g_cam_ang_x) + change_x, g_cam_height + change_y,.1*np.cos(g_cam_ang_x) + change_x)
+            # center_vec = glm.vec3(change_x, change_y, change_x)
+            # V =glm.lookAt(eye_vec, center_vec, up_vec)
         
+        elif mouse_click == 3:
+            cam_zoom()
+            update_view_mat()   
+            V = glm.lookAt(eye_vec, center_vec, up_vec)
+
         V = view_mat
-        # elif mouse_click == 3:
-        # update_view_mat()   
-        # V = glm.lookAt(eye_vec, center_vec, up_vec)
         
             
 
@@ -278,7 +277,7 @@ def main():
         R = glm.rotate(th, glm.vec3(0,0,1))
 
         # tranlation
-        T = glm.translate(glm.vec3(0, 0, 0.))
+        T = glm.translate(glm.vec3(0, 0.1, 0))
 
         # scaling
         S = glm.scale(glm.vec3(np.sin(t), np.sin(t), np.sin(t)))
@@ -297,12 +296,13 @@ def main():
         glUniformMatrix4fv(MVP_loc, 1, GL_FALSE, glm.value_ptr(MVP))
 
         # draw triangle w.r.t. the current frame
-        glBindVertexArray(vao_triangle)
-        glDrawArrays(GL_TRIANGLES, 0, 3)
+        draw_cube(vao_cube, P*V*M, MVP_loc)
+
+        #바닥(xz)에 격자
+        draw_grid(vao_grid_x,vao_grid_z, P*V*glm.mat4(), MVP_loc)
 
         # draw current frame
-        glBindVertexArray(vao_frame)
-        glDrawArrays(GL_LINES, 0, 6)
+        draw_frame(vao_frame, P*V*glm.mat4(), MVP_loc)
 
         # swap front and back buffers
         glfwSwapBuffers(window)
