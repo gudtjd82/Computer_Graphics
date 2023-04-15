@@ -13,13 +13,13 @@ def draw_cube(vao, MVP, MVP_loc):
 
 def draw_grid(vao_x, vao_z, MVP, MVP_loc):
     glBindVertexArray(vao_x)
-    for i in range(-20, 20):
-        MVP_grid_x = MVP * glm.translate(glm.vec3(0, 0, .1*i))
+    for i in range(-200, 200):
+        MVP_grid_x = MVP * glm.translate(glm.vec3(0, 0, .5*i))
         glUniformMatrix4fv(MVP_loc, 1, GL_FALSE, glm.value_ptr(MVP_grid_x))
         glDrawArrays(GL_LINES, 0, 6)
 
     glBindVertexArray(vao_z)
-    for i in range(-20, 20):
-        MVP_grid_z = MVP * glm.translate(glm.vec3(.1*i, 0, 0))
+    for i in range(-200, 200):
+        MVP_grid_z = MVP * glm.translate(glm.vec3(.5*i, 0, 0))
         glUniformMatrix4fv(MVP_loc, 1, GL_FALSE, glm.value_ptr(MVP_grid_z))
         glDrawArrays(GL_LINES, 0, 6)
