@@ -12,7 +12,9 @@ elevation = 45
 distance = 5
 
 #for lookat function
-eye_vec = glm.vec3(np.cos(np.radians(elevation))*np.sin(np.radians(azimuth)), np.sin(np.radians(elevation)), np.cos(np.radians(elevation))*np.cos(np.radians(azimuth))) * distance
+eye_vec = glm.vec3(np.cos(np.radians(elevation))*np.sin(np.radians(azimuth)), 
+                    np.sin(np.radians(elevation)), 
+                    np.cos(np.radians(elevation))*np.cos(np.radians(azimuth))) * distance
 center_vec = glm.vec3(0, 0, 0)
 up_vec = glm.vec3(0,1,0)    # v axis of camera        
 
@@ -24,17 +26,17 @@ v_vec = glm.normalize(glm.cross(front_vec, right_vec))  # v axis of camera
 #기타 변수
 mouse_x = 0
 mouse_y = 0
-mouse_click = 0     # 0=>none, 1=>left, 2=>right
+mouse_click = 0     # 0=>none, 1=>left, 2=>right, 3=>wheel
 mouse_press_x = 0
 mouse_press_y = 0
-diff_x_1 = 0
-diff_y_1 = 0
-diff_x_2 = 0
-diff_y_2 = 0
-move_x = 0
-move_y = 0
-scroll = 0
-click_V = 1
+diff_x_1 = 0        # orbit에서 사용
+diff_y_1 = 0        # orbit에서 사용
+diff_x_2 = 0        # pan에서 사용
+diff_y_2 = 0        # pan에서 사용
+move_x = 0          # pan에서 사용
+move_y = 0          # pan에서 사용
+scroll = 0          # zoom에서 사용
+click_V = 1         
 
 g_vertex_shader_src = '''
 #version 330 core
@@ -72,7 +74,7 @@ void main()
 
 #키보드 눌림 이벤트 callback 함수
 def key_callback(window, key, scancode, action, mods):
-    global pitch, g_cam_height, click_V, click_C
+    global click_V
     if key==GLFW_KEY_ESCAPE and action==GLFW_PRESS:
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     else:
@@ -108,7 +110,7 @@ def button_callback(window, button, action, mod):
 
 #마우스 스크롤 움직임 이벤트 callback 함수
 def scroll_callback(window, xoffset, yoffset):
-    global mouse_click, scroll, eye_vec, front_vec
+    global mouse_click, scroll
     mouse_click = 3
     scroll = yoffset
 
@@ -147,7 +149,6 @@ def cam_orbit():
 def cam_pan():
     global diff_x_2, diff_y_2, eye_vec, center_vec, mouse_x, mouse_y, mouse_press_x,mouse_press_y, move_x, move_y
 
-
     diff_x_2 =mouse_x - mouse_press_x
     diff_y_2 = mouse_y - mouse_press_y
 
@@ -175,10 +176,13 @@ def cam_zoom():
         distance += sensitivity
         scroll += 1
     
+    if distance <= 0.1:
+        distance = 0.1
+
     scroll = 0 
 
-# updating view_mat
-def update_view_mat():
+# updating vectors
+def update_vec():
     global view_mat, eye_vec, front_vec, right_vec, v_vec
     
     #orbit
@@ -255,7 +259,7 @@ def main():
         elif click_V == -1:
             P = glm.ortho(-orth,orth,-orth,orth, .1, 100)
 
-        update_view_mat()
+        update_vec()
 
         V = glm.lookAt(eye_vec, center_vec, up_vec)
         
