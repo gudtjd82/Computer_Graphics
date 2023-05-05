@@ -5,16 +5,21 @@ import numpy as np
 from shader import load_shaders
 from prepare_vao import *
 from draw import *
+from node import *
+from obj import *
+import os
+
 
 # camera 각도, 거리
 azimuth = 45
 elevation = 45
-distance = 10
+distance = 50
 
 #for lookat function
-eye_vec = glm.vec3(np.cos(np.radians(elevation))*np.sin(np.radians(azimuth)), 
-                    np.sin(np.radians(elevation)), 
-                    np.cos(np.radians(elevation))*np.cos(np.radians(azimuth))) * distance
+eye_vec = glm.vec3(
+    np.cos(np.radians(elevation))*np.sin(np.radians(azimuth)), 
+    np.sin(np.radians(elevation)), 
+    np.cos(np.radians(elevation))*np.cos(np.radians(azimuth))) * distance
 center_vec = glm.vec3(0, 0, 0)
 up_vec = glm.vec3(0,1,0)    # v axis of camera        
 
@@ -39,17 +44,32 @@ scroll = 0          # zoom에서 사용
 click_V = 1         
 
 # obj file 관련 변수
-obj_path = ""       # dropped file path
-pVertices = []      # vertex position array
-nVertices = []      # vertex normal array
-faces_3v = []       # face with 3 vertices
-faces_4v = []       # face with 4 vertices
-faces_more = []     # face with 5+ vertices
+drop_path = ""       # dropped file path
+drop_OBJ = Obj("")
+# pVertices = []      # vertex position array
+# nVertices = []      # vertex normal array
+# faces_3v = []       # face with 3 vertices
+# faces_4v = []       # face with 4 vertices
+# faces_more = []     # face with 5+ vertices
+
+# drop 관련 변수
 first_drop = False  # file이 드롭되고 처음 도는 loop인지 확인
 file_drop = False   # file이 드롭된 상태인지 체크
 click_H = 1
 
-g_vertex_shader_src = '''
+# Hierarchical model redering mode
+# Hierarchical objs
+current_dir = os.getcwd()
+casino_path = os.path.join(current_dir, "Casino")
+Casino_table_obj = Obj(os.path.join(casino_path, "Casino_Table.obj"))
+Clover_card_obj = Obj(os.path.join(casino_path, "Clover_Card.obj"))
+Diamond_card_obj = Obj(os.path.join(casino_path, "Diamond_Card.obj"))
+Heart_card_obj = Obj(os.path.join(casino_path, "Heart_Card.obj"))
+Spade_card_obj = Obj(os.path.join(casino_path, "Spade_Card.obj"))
+Chip_obj = Obj(os.path.join(casino_path, "Chip.obj"))
+
+# single mesh mode & hierarchical mode
+g_vertex_shader_src_color_attribute = '''
 #version 330 core
 
 layout (location = 0) in vec3 vin_pos; 
@@ -70,6 +90,28 @@ void main()
 }
 '''
 
+g_vertex_shader_src_color_uniform = '''
+#version 330 core
+
+layout (location = 0) in vec3 vin_pos; 
+
+out vec4 vout_color;
+
+uniform mat4 MVP;
+uniform vec3 color;
+
+void main()
+{
+    // 3D points in homogeneous coordinates
+    vec4 p3D_in_hcoord = vec4(vin_pos.xyz, 1.0);
+
+    gl_Position = MVP * p3D_in_hcoord;
+
+    vout_color = vec4(color, 1.);
+    //vout_color = vec4(1,1,1,1);
+}
+'''
+
 g_fragment_shader_src = '''
 #version 330 core
 
@@ -80,45 +122,89 @@ out vec4 FragColor;
 void main()
 {
     FragColor = vout_color;
-    //FragColor = vec4(1.0f, 1.0f, 1.0f, 1.0f)
 }
 '''
 
-# Node 객체
-class Node:
-    def __init__(self, parent, shape_transform, color):
-        # hierarchy
-        self.parent = parent
-        self.children = []
-        if parent is not None:
-            parent.children.append(self)
+# lighting mode
+g_vertex_shader_src_lighting = '''
+#version 330 core
 
-        # transform
-        self.transform = glm.mat4()
-        self.global_transform = glm.mat4()
+layout (location = 0) in vec3 vin_pos; 
+layout (location = 1) in vec3 vin_normal; 
 
-        # shape
-        self.shape_transform = shape_transform
-        self.color = color
+out vec3 vout_surface_pos;
+out vec3 vout_normal;
 
-    def set_transform(self, transform):
-        self.transform = transform
+uniform mat4 MVP;
+uniform mat4 M;
 
-    def update_tree_global_transform(self):
-        if self.parent is not None:
-            self.global_transform = self.parent.get_global_transform() * self.transform
-        else:
-            self.global_transform = self.transform
+void main()
+{
+    // 3D points in homogeneous coordinates
+    vec4 p3D_in_hcoord = vec4(vin_pos.xyz, 1.0);
+    gl_Position = MVP * p3D_in_hcoord;
 
-        for child in self.children:
-            child.update_tree_global_transform()
+    vout_surface_pos = vec3(M * vec4(vin_pos, 1));
+    vout_normal = normalize( mat3(inverse(transpose(M)) ) * vin_normal);
 
-    def get_global_transform(self):
-        return self.global_transform
-    def get_shape_transform(self):
-        return self.shape_transform
-    def get_color(self):
-        return self.color
+}
+'''
+
+g_fragment_shader_src_lighting = '''
+#version 330 core
+
+in vec3 vout_surface_pos;
+in vec3 vout_normal;
+
+out vec4 FragColor;
+
+uniform vec3 view_pos;
+uniform vec3 color;
+//uniform mat4 light_rotate;
+
+void main()
+{
+    // light and material properties
+    //vec3 light_pos = vec3(light_rotate * vec4(2, 2, 0, 1));
+    //vec3 light_pos = vec3(3,2,4);
+    vec3 light_pos = vec3(0,10,0);
+    vec3 light_color = vec3(1,1,1);
+    vec3 material_color = color;
+    float material_shininess = 32.0;
+
+    // light components
+    vec3 light_ambient = 0.1*light_color;
+    vec3 light_diffuse = light_color;
+    vec3 light_specular = light_color;
+
+    // material components
+    vec3 material_ambient = material_color;
+    vec3 material_diffuse = material_color;
+    vec3 material_specular = light_color;  // for non-metal material
+
+    // ambient
+    vec3 ambient = light_ambient * material_ambient;
+
+    // for diffiuse and specular
+    vec3 normal = normalize(vout_normal);
+    vec3 surface_pos = vout_surface_pos;
+    vec3 light_dir = normalize(light_pos - surface_pos);
+
+    // diffuse
+    float diff = max(dot(normal, light_dir), 0);
+    vec3 diffuse = diff * light_diffuse * material_diffuse;
+
+    // specular
+    vec3 view_dir = normalize(view_pos - surface_pos);
+    vec3 reflect_dir = reflect(-light_dir, normal);
+    float spec = pow( max(dot(view_dir, reflect_dir), 0.0), material_shininess);
+    vec3 specular = spec * light_specular * material_specular;
+
+    vec3 color = ambient + diffuse + specular;
+    FragColor = vec4(color, 1.);
+}
+'''
+
 
 #키보드 눌림 이벤트 callback 함수
 def key_callback(window, key, scancode, action, mods):
@@ -256,62 +342,27 @@ def update_vec():
 
 # file drop callback function
 def drop_callback(window, paths):
-    global obj_path, first_drop, file_drop
-
-    print("drop_callback call")
+    global drop_path, first_drop, file_drop
 
     # 기존의 Obj 관련 변수 초기화
-    initOBJ()
+    # initOBJ()
+    file_drop = False
+    drop_OBJ.__init__("")
 
     # for path in paths:
-    obj_path = paths[0]
+    # drop_path = os.path.join(os.getcwd(), paths[0])
+    drop_path = paths[0]
+    print("path: ", drop_path)
     first_drop = True
     file_drop = True
 
     # paths 초기화
     paths.__init__()
 
-# obj file을 parsing -> vertex와 face를 배열에 저장
-def obj_parser(path, pVertices, nVertices, faces_3v, faces_4v, faces_more):
-    with open(path, 'r') as file:
-        lines = file.readlines()
-
-    i = 0;
-    for line in lines:
-        tockens = line.strip().split()
-        if len(tockens) > 0:
-            if tockens[0] == "v":
-                vertex = [float(v) for v in tockens[1:]]
-                # print(i , "번째: ")
-                # print(vertex)
-                # print()
-                pVertices.append(vertex)
-            
-            elif tockens[0] == "vn":
-                vertex = [float(vn) for vn in tockens[1:]]
-                nVertices.append(vertex)
-            
-            elif tockens[0] == "f":
-                face = []
-                for x in tockens[1:]:
-                    i_str = x.strip().split("/")
-                    i_int = [int(i_str[0]) - 1, int(i_str[2]) - 1]
-                    face.append(i_int)
-                if(len(face) == 3):
-                    faces_3v.append(face)
-                elif(len(face) == 4):
-                    faces_4v.append(face)
-                elif(len(face) > 4):
-                    faces_more.append(face)
-    # print("vertex position: \n", pVertices)
-    # print("face_3v: \n", faces_3v)
-    # print("\nface_4v: \n", faces_4v)
-
-
 def initOBJ():
-    global obj_path, pVertices, nVertices, faces_3v, faces_4v, faces_more, file_drop
+    global drop_path, pVertices, nVertices, faces_3v, faces_4v, faces_more, file_drop
 
-    obj_path.__init__()
+    drop_path.__init__()
     pVertices.__init__()
     nVertices.__init__()
     faces_3v.__init__()
@@ -319,25 +370,17 @@ def initOBJ():
     faces_more.__init__()
     file_drop = False
 
-def display_objInfo(fileName):
-    num_of_faces = len(faces_3v)+len(faces_4v)
 
-    print()
-    print("------------------------------------------------")
-    print("OBJ File Name:", fileName)
-    print("Total Number of Faces:", num_of_faces)
-    print("Number of Faces with 3 Vertices:", len(faces_3v))
-    print("Number of Faces with 4 Vertices:", len(faces_4v))
-    print("Number of Faces with 5+ Vertices:", len(faces_more))
-    print("------------------------------------------------")
-    print()
-
-def single_mesh_mode(vao, MVP, MVP_loc):
-    num_of_vertices = len(faces_3v)*3 + len(faces_4v)*2*3
-    draw_obj(vao, MVP, MVP_loc, num_of_vertices) 
+# 부모 노드가 parent인 num 개수만큼의 chip node 배열 반환, 
+def create_chips(parent, num, color):
+    chips = []
+    for i in range(num):
+        chips.append(Node(parent, glm.scale((0,0,0)), color, Obj(os.path.join(casino_path, "Chip.obj"))))
+    
+    return chips
 
 def main():
-    global first_drop, g_P
+    global first_drop, click_H
 
     # initialize glfw
     if not glfwInit():
@@ -348,7 +391,7 @@ def main():
     glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE) # for macOS
 
     # create a window and OpenGL context
-    window = glfwCreateWindow(1500, 1500, '202104242 박성현', None, None)
+    window = glfwCreateWindow(1000, 1000, '202104242 박성현', None, None)
     if not window:
         glfwTerminate()
         return
@@ -362,17 +405,44 @@ def main():
     glfwSetDropCallback(window, drop_callback)
 
     # load shaders
-    shader_program = load_shaders(g_vertex_shader_src, g_fragment_shader_src)
+    shader_for_frame = load_shaders(g_vertex_shader_src_color_attribute, g_fragment_shader_src)
+    shader_for_lighting = load_shaders(g_vertex_shader_src_lighting, g_fragment_shader_src_lighting)
 
     # get uniform locations
-    MVP_loc = glGetUniformLocation(shader_program, 'MVP')
+    MVP_loc_frame = glGetUniformLocation(shader_for_frame, 'MVP')
+    MVP_loc = glGetUniformLocation(shader_for_lighting, 'MVP')
+    M_loc = glGetUniformLocation(shader_for_lighting, 'M')
+    view_pos_loc = glGetUniformLocation(shader_for_lighting, 'view_pos')
+    color_loc = glGetUniformLocation(shader_for_lighting, 'color') 
      
     # prepare vaos
     vao_cube = prepare_vao_cube()
     vao_frame = prepare_vao_frame()
     vao_grid_x = prepare_vao_grid_x()
     vao_grid_z = prepare_vao_grid_z()
-    vao_obj = prepare_vao_obj(pVertices, nVertices, faces_3v, faces_4v, faces_more)
+    vao_drop_obj = prepare_vao_obj(Obj(""))
+
+    # Casino nodes
+    Table = Node(None, glm.scale((0,0,0)), glm.vec3(1,0,0), Casino_table_obj)
+    Spade = Node(Table, glm.scale((0,0,0)), glm.vec3(0,1,0), Spade_card_obj)
+    Dia = Node(Table, glm.scale((0,0,0)), glm.vec3(0,0,1), Diamond_card_obj)
+    Heart = Node(Table, glm.scale((0,0,0)), glm.vec3(1,1,0), Heart_card_obj)
+    Clover = Node(Table, glm.scale((0,0,0)), glm.vec3(0,1,1), Clover_card_obj)
+    Chips1_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
+    Chips2_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
+    Chips1_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
+    Chips2_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
+    Chips1_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
+    Chips2_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
+    Chips1_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
+    Chips2_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
+    Card_nodes = [Spade, Dia, Heart, Clover]
+    Chips_nodes = [Chips1_of_S, Chips2_of_S, Chips1_of_D, Chips2_of_D, Chips1_of_H, Chips2_of_H, Chips1_of_C, Chips2_of_C]
+
+    # prepare casino nodes vaos
+    vao_table = prepare_vao_obj(Table.obj)
+    vaos_card = prepare_vaos_card(Card_nodes)
+    vao_chip = prepare_vao_obj(Chip_obj)
 
     # loop until the user closes the window
     while not glfwWindowShouldClose(window):
@@ -381,18 +451,14 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glEnable(GL_DEPTH_TEST)
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
-
-        glUseProgram(shader_program)
-
-        
+        # glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
 
         #projection / orthogonal
         ortho = 5
         if click_V == 1:
-            P = glm.perspective(45, 1, .1, 100)
+            P = glm.perspective(45, 1, .1, 1000)
         elif click_V == -1:
-            P = glm.ortho(-ortho, ortho, -ortho, ortho, .1, 100)
+            P = glm.ortho(-ortho, ortho, -ortho, ortho, .1, 1000)
 
         update_vec()
 
@@ -403,32 +469,58 @@ def main():
         MVP = P*V*M
 
         # draw frame
-        draw_frame(vao_frame, MVP, MVP_loc)
+        glUseProgram(shader_for_frame)
+        draw_frame(vao_frame, MVP, MVP_loc_frame)
 
         #바닥(xz)에 격자
-        draw_grid(vao_grid_x,vao_grid_z, MVP, MVP_loc)
+        draw_grid(vao_grid_x,vao_grid_z, MVP, MVP_loc_frame)
+
+        glUseProgram(shader_for_lighting)
+        glUniform3f(view_pos_loc, eye_vec.x, eye_vec.y, eye_vec.z)
+        glUniform3f(color_loc, 1, 0, 0)
 
         # obj파일이 처음 drop되었을 때
         if first_drop:
-            obj_parser(obj_path, pVertices, nVertices, faces_3v, faces_4v, faces_more)
+            click_H = 1
+            drop_OBJ.set_path(drop_path)
+            drop_OBJ.parser()
 
-            fileName = obj_path.strip().split("/").pop()
-            display_objInfo(fileName)
+            drop_OBJ.display_objInfo()
 
-            vao_obj = prepare_vao_obj(pVertices, nVertices, faces_3v, faces_4v, faces_more)
+            vao_drop_obj = prepare_vao_obj(drop_OBJ)
 
             first_drop = False
         
-        # animating
-        t = glfwGetTime()
+        # # animating
+        # t = glfwGetTime()
 
-        # rotation
-        th = np.radians(t*90)
-        M = glm.translate(glm.vec3(0, 0 , np.sin(th/3) * 10))
+        # # rotation
+        # th = np.radians(t*90)
+        # M = glm.translate(glm.vec3(0, 0 , np.sin(th/3) * 10))
+        glUniformMatrix4fv(M_loc, 1, GL_FALSE, glm.value_ptr(M))
+        if click_H == 1:
+            num_of_vertices = drop_OBJ.get_num_of_vertices()
+            # single_mesh_mode(vao_drop_obj, P*V*M, MVP_loc, num_of_vertices)
+            draw_obj(vao_drop_obj, MVP, MVP_loc, num_of_vertices)
+            
+        elif click_H == -1:
+            print("hierarchy")
+            VP = P*V
 
-        MVP = P*V*M
+            # draw Table
+            draw_node_obj(vao_table, Table, VP, MVP_loc, color_loc)
 
-        single_mesh_mode(vao_obj, MVP, MVP_loc)
+            # draw Cards
+            i = 0;
+            for card in Card_nodes:
+                draw_node_obj(vaos_card[i], card, VP, M_loc, color_loc)
+                i +=1
+
+            # draw Chips
+            for chips in Chips_nodes:
+                # transformate each chip
+                for chip in chips:
+                    draw_node_obj(vao_chip, chip, VP, MVP_loc, color_loc)
 
         # swap front and back buffers
         glfwSwapBuffers(window)
