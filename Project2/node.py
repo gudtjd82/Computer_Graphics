@@ -39,8 +39,3 @@ class Node:
         return self.shape_transform
     def get_color(self):
         return self.color
-
-def transform_nodes(G_parent, nodes, T):
-    for node in nodes:
-        node.set_transform(T)
-        G_parent.update_tree_global_transform()
