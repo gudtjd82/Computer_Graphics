@@ -2,21 +2,25 @@ from node import *
 
 class Obj:
     def __init__(self, path):
-        # path
-        self.path = path
-
-        # OBJ File Name
-        self.fileName = path.strip().split("/").pop()
 
         # arrays
-        self.postions = []
+        self.position = []
         self.normals = []
         self.faces_3v = []
         self.faces_4v = []
         self.faces_more = []
+
+        # path
+        self.path = path
+        if self.path != "":
+            self.parser()
+
+        # OBJ File Name
+        self.fileName = path.strip().split("/").pop()
     
     # obj file을 parsing -> vertex와 face를 배열에 저장
     def parser(self):
+        
         with open(self.path, 'r') as file:
             lines = file.readlines()
 
@@ -29,7 +33,7 @@ class Obj:
                     # print(i , "번째: ")
                     # print(vertex)
                     # print()
-                    self.postions.append(vertex)
+                    self.position.append(vertex)
                 
                 elif tockens[0] == "vn":
                     vertex = [float(vn) for vn in tockens[1:]]
@@ -43,13 +47,13 @@ class Obj:
                         if len(i_str) > 2:
                             i_int = [int(i_str[0]) - 1, int(i_str[2]) - 1]
                             if i_int[0] < 0:
-                                i_int[0] = len(self.postions) + i_int[0]
+                                i_int[0] = len(self.position) + i_int[0]
                             if i_int[1]< 0:
                                 i_int[1] = len(self.normals) + i_int[1]
                         elif 0 < len(i_str) <= 2:
                             i_int = [int(i_str[0]) - 1]
                             if i_int[0] < 0:
-                                i_int[0] = len(self.postions) + i_int[0]
+                                i_int[0] = len(self.position) + i_int[0]
 
                         
 
@@ -82,11 +86,12 @@ class Obj:
     def set_path(self, path):
         self.path = path
         self.fileName = path.strip().split("/").pop()
+        self.parser()
     
     def get_fileName(self):
         return self.fileName
     def get_positions(self):
-        return self.postions
+        return self.position
     def get_normals(self):
         return self.normals
     def get_faces_3v(self):

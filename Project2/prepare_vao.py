@@ -161,32 +161,9 @@ def prepare_vao_obj(obj):
     # position vertices
     positions = obj.get_positions()
 
-    # vertices_arr = []
-    # # i = 0
-    # # j = 0
-    # for v in obj.get_positions():
-    #     for p in v:
-    #         vertices_arr.append(p)
-    #         # if i % 3 == 2:
-    #         #     for k in range(3):
-    #         #         vertices_arr.append(normals[j + k])
-    #         #     j += 3
-    #         # i+=1
-    # # print("vetices 1: \n", vertices)
-    # np_arr = np.array(vertices_arr, np.float32)
-    # vertices = glm.array(np_arr, data=glm.float32)
-
     # normals
-    normals_arr = []
     normals = obj.get_normals()
-    # for n in normals:
-    #     for v in n:
-    #         normals_arr.append(v)
-    # np_arr = np.array(normals_arr, np.float32)
-    # normals = glm.array(np_arr, data=glm.float32)
-    
-    # pIndices_arr = []
-    # nIndices_arr = []
+
     indices_arr = []
     i = 0
     for f in obj.get_faces_4v():
@@ -194,44 +171,18 @@ def prepare_vao_obj(obj):
             indices_arr.append(f[0])
             indices_arr.append(f[i])
             indices_arr.append(f[i+1])
-            # nIndices_arr.append(f[0][1])
-            # nIndices_arr.append(f[i][1])
-            # nIndices_arr.append(f[i+1][1])
+
     for f in obj.get_faces_3v():
         for i in range(1, len(f)-1):
             indices_arr.append(f[0])
             indices_arr.append(f[i])
             indices_arr.append(f[i+1])
-            # pIndices_arr.append(f[0][0])
-            # pIndices_arr.append(f[i][0])
-            # pIndices_arr.append(f[i+1][0])
-            # nIndices_arr.append(f[0][1])
-            # nIndices_arr.append(f[i][1])
-            # nIndices_arr.append(f[i+1][1])
+   
     for f in obj.get_faces_more():
-        # print(f)
         for i in range(1, len(f)-1):
             indices_arr.append(f[0])
             indices_arr.append(f[i])
             indices_arr.append(f[i+1])
-            # pIndices_arr.append(f[0][0])
-            # pIndices_arr.append(f[i][0])
-            # pIndices_arr.append(f[i+1][0])
-            # nIndices_arr.append(f[0][1])
-            # nIndices_arr.append(f[i][1])
-            # nIndices_arr.append(f[i+1][1])
-    # np_arr = np.array(pIndices_arr, np.uint32)
-    # # print("Indice: \n", np_arr)
-    # pIndices = glm.array(np_arr, dtype=glm.uint32)
-
-    # np_arr = np.array(nIndices_arr, np.uint32)
-    # nIndices = glm.array(np_arr, dtype=glm.uint32)
-
-    # print("vertices: \n", vertices, "\n")
-    # print("normals: \n", normals, "\n" )
-    # print("pIndices: \n", pIndices, "\n")
-    # print("nIndices: \n", nIndices, "\n" )
-    # print("indices: \n", indices_arr)
 
     vertices = []
     for i in range(len(indices_arr)):
@@ -243,10 +194,7 @@ def prepare_vao_obj(obj):
             vertex = positions[p] + normals[n]
         vertices += vertex
     np_arr = np.array(vertices, np.float32)
-    # print(np_arr)
     vertices = glm.array(np_arr, data=glm.float32)
-    # np_arr = np.array(indices_arr, np.float32)
-    # indices = glm.array(np_arr, data=glm.float32)
     
     VAO = glGenVertexArrays(1)  # create VAO 
     glBindVertexArray(VAO)      # activate VAO
@@ -254,13 +202,9 @@ def prepare_vao_obj(obj):
     VBO = glGenBuffers(1)               # create two VBOs
     glBindBuffer(GL_ARRAY_BUFFER, VBO)  # activate VBO[0] - positions
 
-    # EBO = glGenBuffers(1)                       # create two EBOs
-    # glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO)  # activate EBO 
 
     # copy vertex data to VBO[0]
     glBufferData(GL_ARRAY_BUFFER, vertices.nbytes, vertices.ptr, GL_STATIC_DRAW) 
-    # # copy index data to EBO
-    # glBufferData(GL_ELEMENT_ARRAY_BUFFER, pIndices.nbytes, pIndices.ptr, GL_STATIC_DRAW)
 
     # configure vertex positions
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * glm.sizeof(glm.float32), None)
@@ -272,9 +216,4 @@ def prepare_vao_obj(obj):
 
     return VAO
 
-def prepare_vaos_card(nodes):
-    vaos = []
-    for n in nodes:
-        vaos.append(prepare_vao_obj(n.obj))
-    
-    return vaos
+

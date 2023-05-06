@@ -1,9 +1,9 @@
 import glm
-import obj
+from draw import *
 
 # Node 객체
 class Node:
-    def __init__(self, parent, shape_transform, color, obj):
+    def __init__(self, parent, shape_transform, color):
         # hierarchy
         self.parent = parent
         self.children = []
@@ -19,7 +19,7 @@ class Node:
         self.color = color
 
         # obj
-        self.obj = obj
+        # self.obj = obj
 
     def set_transform(self, transform):
         self.transform = transform
@@ -39,3 +39,8 @@ class Node:
         return self.shape_transform
     def get_color(self):
         return self.color
+
+def transform_nodes(G_parent, nodes, T):
+    for node in nodes:
+        node.set_transform(T)
+        G_parent.update_tree_global_transform()

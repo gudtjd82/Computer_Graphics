@@ -41,31 +41,31 @@ diff_y_2 = 0        # pan에서 사용
 move_x = 0          # pan에서 사용
 move_y = 0          # pan에서 사용
 scroll = 0          # zoom에서 사용
+
+# mode 관련 변수 - 클릭 유무
 click_V = 1         
+click_H = 1
+click_Z = 1
 
 # obj file 관련 변수
 drop_path = ""       # dropped file path
 drop_OBJ = Obj("")
-# pVertices = []      # vertex position array
-# nVertices = []      # vertex normal array
-# faces_3v = []       # face with 3 vertices
-# faces_4v = []       # face with 4 vertices
-# faces_more = []     # face with 5+ vertices
+
 
 # drop 관련 변수
 first_drop = False  # file이 드롭되고 처음 도는 loop인지 확인
 file_drop = False   # file이 드롭된 상태인지 체크
-click_H = 1
+
 
 # Hierarchical model redering mode
 # Hierarchical objs
 current_dir = os.getcwd()
 casino_path = os.path.join(current_dir, "Casino")
 Casino_table_obj = Obj(os.path.join(casino_path, "Casino_Table.obj"))
-Clover_card_obj = Obj(os.path.join(casino_path, "Clover_Card.obj"))
-Diamond_card_obj = Obj(os.path.join(casino_path, "Diamond_Card.obj"))
-Heart_card_obj = Obj(os.path.join(casino_path, "Heart_Card.obj"))
-Spade_card_obj = Obj(os.path.join(casino_path, "Spade_Card.obj"))
+Clover_obj = Obj(os.path.join(casino_path, "Clover_Card.obj"))
+Diamond_obj = Obj(os.path.join(casino_path, "Diamond_Card.obj"))
+Heart_obj = Obj(os.path.join(casino_path, "Heart_Card.obj"))
+Spade_obj = Obj(os.path.join(casino_path, "Spade_Card.obj"))
 Chip_obj = Obj(os.path.join(casino_path, "Chip.obj"))
 
 # single mesh mode & hierarchical mode
@@ -134,9 +134,11 @@ layout (location = 1) in vec3 vin_normal;
 
 out vec3 vout_surface_pos;
 out vec3 vout_normal;
+out vec3 vout_color;
 
 uniform mat4 MVP;
 uniform mat4 M;
+uniform vec3 color;
 
 void main()
 {
@@ -146,6 +148,7 @@ void main()
 
     vout_surface_pos = vec3(M * vec4(vin_pos, 1));
     vout_normal = normalize( mat3(inverse(transpose(M)) ) * vin_normal);
+    vout_color = color;
 
 }
 '''
@@ -155,11 +158,11 @@ g_fragment_shader_src_lighting = '''
 
 in vec3 vout_surface_pos;
 in vec3 vout_normal;
+in vec3 vout_color;
 
 out vec4 FragColor;
 
 uniform vec3 view_pos;
-uniform vec3 color;
 //uniform mat4 light_rotate;
 
 void main()
@@ -167,9 +170,9 @@ void main()
     // light and material properties
     //vec3 light_pos = vec3(light_rotate * vec4(2, 2, 0, 1));
     //vec3 light_pos = vec3(3,2,4);
-    vec3 light_pos = vec3(0,10,0);
+    vec3 light_pos = vec3(0,12,0);
     vec3 light_color = vec3(1,1,1);
-    vec3 material_color = color;
+    vec3 material_color = vout_color;
     float material_shininess = 32.0;
 
     // light components
@@ -208,7 +211,7 @@ void main()
 
 #키보드 눌림 이벤트 callback 함수
 def key_callback(window, key, scancode, action, mods):
-    global click_V, click_H
+    global click_V, click_H, file_drop, click_Z
     if key==GLFW_KEY_ESCAPE and action==GLFW_PRESS:
         glfwSetWindowShouldClose(window, GLFW_TRUE);
     else:
@@ -217,6 +220,10 @@ def key_callback(window, key, scancode, action, mods):
                 click_V *= -1
             elif key==GLFW_KEY_H:
                 click_H *= -1
+                if click_H == -1:
+                    file_drop = False
+            elif key==GLFW_KEY_Z:
+                click_Z *= -1
 
 #마우스 커서 움직임 이벤트 callback 함수
 def cursor_callback(window, xpos, ypos):
@@ -302,7 +309,7 @@ def cam_pan():
 def cam_zoom():
     global scroll, distance
 
-    sensitivity = 0.5
+    sensitivity = 0.05 * distance
 
     if scroll > 0:
         distance -= sensitivity
@@ -342,7 +349,7 @@ def update_vec():
 
 # file drop callback function
 def drop_callback(window, paths):
-    global drop_path, first_drop, file_drop
+    global drop_path, first_drop, file_drop, click_H
 
     # 기존의 Obj 관련 변수 초기화
     # initOBJ()
@@ -355,27 +362,16 @@ def drop_callback(window, paths):
     print("path: ", drop_path)
     first_drop = True
     file_drop = True
+    click_H = 1
 
     # paths 초기화
     paths.__init__()
 
-def initOBJ():
-    global drop_path, pVertices, nVertices, faces_3v, faces_4v, faces_more, file_drop
-
-    drop_path.__init__()
-    pVertices.__init__()
-    nVertices.__init__()
-    faces_3v.__init__()
-    faces_4v.__init__()
-    faces_more.__init__()
-    file_drop = False
-
-
 # 부모 노드가 parent인 num 개수만큼의 chip node 배열 반환, 
-def create_chips(parent, num, color):
+def create_chips(parent, num, scale, color):
     chips = []
     for i in range(num):
-        chips.append(Node(parent, glm.scale((0,0,0)), color, Obj(os.path.join(casino_path, "Chip.obj"))))
+        chips.append(Node(parent, scale, color))
     
     return chips
 
@@ -423,27 +419,40 @@ def main():
     vao_drop_obj = prepare_vao_obj(Obj(""))
 
     # Casino nodes
-    Table = Node(None, glm.scale((0,0,0)), glm.vec3(1,0,0), Casino_table_obj)
-    Spade = Node(Table, glm.scale((0,0,0)), glm.vec3(0,1,0), Spade_card_obj)
-    Dia = Node(Table, glm.scale((0,0,0)), glm.vec3(0,0,1), Diamond_card_obj)
-    Heart = Node(Table, glm.scale((0,0,0)), glm.vec3(1,1,0), Heart_card_obj)
-    Clover = Node(Table, glm.scale((0,0,0)), glm.vec3(0,1,1), Clover_card_obj)
-    Chips1_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
-    Chips2_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
-    Chips1_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
-    Chips2_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
-    Chips1_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
-    Chips2_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
-    Chips1_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
-    Chips2_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
-    Card_nodes = [Spade, Dia, Heart, Clover]
-    Chips_nodes = [Chips1_of_S, Chips2_of_S, Chips1_of_D, Chips2_of_D, Chips1_of_H, Chips2_of_H, Chips1_of_C, Chips2_of_C]
+    size_of_card = 0.7
+    scale = glm.scale((size_of_card,size_of_card,size_of_card))
+    table = Node(None, glm.scale((1,1,1)), glm.vec3(1,0.2,0.2))
+    spade = Node(table, scale, glm.vec3(0,0,0.5))
+    dia = Node(table, scale, glm.vec3(0.8,0,0))
+    heart = Node(table, scale, glm.vec3(0.8,0,0))
+    clover = Node(table, scale, glm.vec3(0,1,0))
+    chip_of_S = Node(spade, scale, glm.vec3(1,1,0))
+    chip_of_D = Node(dia, scale, glm.vec3(1,1,0))
+    chip_of_H = Node(heart, scale, glm.vec3(1,1,0))
+    chip_of_C = Node(clover, scale, glm.vec3(1,1,0))
+    H_chips_top = create_chips(heart, 5, scale, glm.vec3(1,1,0))
+    H_chips_bottom = create_chips(heart, 5, scale, glm.vec3(1,1,0))
+    # Chips1_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
+    # Chips2_of_S = create_chips(Spade, 2, glm.vec3(0,1,0))
+    # Chips1_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
+    # Chips2_of_D = create_chips(Dia, 2, glm.vec3(0,0,1))
+    # Chips1_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
+    # Chips2_of_H = create_chips(Heart, 2, glm.vec3(1,1,0))
+    # Chips1_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
+    # Chips2_of_C = create_chips(Clover, 2, glm.vec3(0,1,1))
+    # card_nodes = [spade, dia, heart, clover]
+    # chips_nodes = [chip_of_S, chip_of_D, chip_of_H, chip_of_C]
 
     # prepare casino nodes vaos
-    vao_table = prepare_vao_obj(Table.obj)
-    vaos_card = prepare_vaos_card(Card_nodes)
+    vao_table = prepare_vao_obj(Casino_table_obj)
+    vao_spade = prepare_vao_obj(Spade_obj)
+    vao_dia = prepare_vao_obj(Diamond_obj)
+    vao_heart = prepare_vao_obj(Heart_obj)
+    vao_clover = prepare_vao_obj(Clover_obj)
     vao_chip = prepare_vao_obj(Chip_obj)
 
+    start_time = glfwGetTime()
+    start_time2 = glfwGetTime()
     # loop until the user closes the window
     while not glfwWindowShouldClose(window):
 
@@ -451,7 +460,10 @@ def main():
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glEnable(GL_DEPTH_TEST)
 
-        # glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        if click_Z == -1:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE)
+        elif click_Z == 1:
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL)
 
         #projection / orthogonal
         ortho = 5
@@ -477,13 +489,13 @@ def main():
 
         glUseProgram(shader_for_lighting)
         glUniform3f(view_pos_loc, eye_vec.x, eye_vec.y, eye_vec.z)
-        glUniform3f(color_loc, 1, 0, 0)
+        glUniform3f(color_loc, 0, 0.4, 0.1)
 
         # obj파일이 처음 drop되었을 때
         if first_drop:
-            click_H = 1
             drop_OBJ.set_path(drop_path)
-            drop_OBJ.parser()
+            
+            # drop_OBJ.parser()
 
             drop_OBJ.display_objInfo()
 
@@ -491,36 +503,263 @@ def main():
 
             first_drop = False
         
-        # # animating
-        # t = glfwGetTime()
-
-        # # rotation
-        # th = np.radians(t*90)
-        # M = glm.translate(glm.vec3(0, 0 , np.sin(th/3) * 10))
+        
         glUniformMatrix4fv(M_loc, 1, GL_FALSE, glm.value_ptr(M))
-        if click_H == 1:
+        if click_H == 1 and file_drop:
             num_of_vertices = drop_OBJ.get_num_of_vertices()
-            # single_mesh_mode(vao_drop_obj, P*V*M, MVP_loc, num_of_vertices)
             draw_obj(vao_drop_obj, MVP, MVP_loc, num_of_vertices)
-            
-        elif click_H == -1:
-            print("hierarchy")
+
+        if click_H == -1 and not file_drop:
+            # print("hierarchy")
             VP = P*V
+            # animating
+            t = glfwGetTime()
 
+            # rotation
+            speed = 3
+            spread = 15
+            th = np.radians(spread*np.sin(t*speed) +spread)
+
+
+            # Trnasforamtion 1 - User1: spade, dia, heart, chip
             # draw Table
-            draw_node_obj(vao_table, Table, VP, MVP_loc, color_loc)
+            draw_node(vao_table, table, VP, MVP_loc, color_loc, Casino_table_obj)
 
+            # set local transformation of each node
+            Trans1 = glm.translate((7.5,7.18,3.5)) * glm.translate((-th*1.7,0,0)) * glm.rotate(th, (0,1,0)) * glm.translate((0,0,-1))
+            Trans2 = glm.translate((7.5,7.24,3.5)) * glm.translate((th*1.7,0,0)) * glm.rotate(-th, (0,1,0)) * glm.translate((0,0,-1))
+            # cards 
+            spade.set_transform(Trans1)
+            dia.set_transform(Trans2)
+            heart.set_transform(glm.translate((7.5,7.12,2.5-th*2)))
+            table.update_tree_global_transform()
             # draw Cards
-            i = 0;
-            for card in Card_nodes:
-                draw_node_obj(vaos_card[i], card, VP, M_loc, color_loc)
-                i +=1
+            draw_node(vao_spade, spade, VP, MVP_loc, color_loc, Spade_obj)
+            draw_node(vao_dia, dia, VP, MVP_loc, color_loc, Diamond_obj)
+            draw_node(vao_heart, heart, VP, MVP_loc, color_loc, Heart_obj)
+           
+            # chip suffle
+            m = glfwGetTime() - start_time
+            unit = 0.6
+            x_pos = -3.5
+            for i in range(5):
+                if m < unit:    # top: 왼쪽 아래 이동, 반시계방향 회전
+                    t_x = 2*m
+                    t_y = m*0.75
+                    r = m*50
+                    # 아래
+                    chip_of_H.set_transform(glm.translate((x_pos,0.09*i,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
+                    # 위
+                    chip_of_H.set_transform(glm.translate((0,-t_y,0)) * glm.translate((x_pos-t_x,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(r), (0,0,1)))
+                    
+                elif m < unit*2:    # top: 시계 방향 회전
+                    # 아래
+                    chip_of_H.set_transform(glm.translate((x_pos,0.09*i,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
 
-            # draw Chips
-            for chips in Chips_nodes:
-                # transformate each chip
-                for chip in chips:
-                    draw_node_obj(vao_chip, chip, VP, MVP_loc, color_loc)
+                    # 위 
+                    chip_of_H.set_transform(glm.translate((0,-0.45,0)) * glm.translate((x_pos-2*unit,0.09*i+0.45,th*2+1))*glm.rotate(np.radians(-(m-unit)*50+30), (0,0,1)))
+                    
+                elif m < unit*3:    # top: 반시계 방향 회전
+                                    # bottom: 시계 방향 회전
+                    r = (m-2*unit)*50*i/5
+                    # 아래
+                    chip_of_H.set_transform(glm.translate((x_pos,0.09*i,th*2+1))* glm.rotate(np.radians(-r), (0,0,1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_H.set_transform(glm.translate((0,-0.45,0)) * glm.translate((x_pos-2*unit,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(-unit*50+30+r), (0,0,1)))
+                elif m < unit*4:        # top: 오른쪽 이동, 시계 방향 회전
+                                        # bottom: 반시계 방향 회전
+                    t_x = 2*(m-3*unit)
+                    t_y_top = (m-3*unit)*0.15*(i+1)
+                    t_y_bottom = (m-3*unit)*0.15*i
+                    r = (m-3*unit)*50*i/5
+                    # 아래
+                    chip_of_H.set_transform(glm.translate((x_pos,0.09*i+t_y_bottom,th*2+1))* glm.rotate(np.radians(-unit*50*i/5+r), (0,0,1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_H.set_transform(glm.translate((0,-0.45+t_y_top,0)) * glm.translate((x_pos-2*unit+t_x,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(-unit*50+30+unit*50*i/5-r), (0,0,1)))
+
+                elif m < unit*5:
+                    t_y_top = unit*0.15*(i+1)
+                    t_y_bottom = unit*0.15*i
+
+                    # 아래
+                    chip_of_H.set_transform(glm.translate((x_pos,0.09*i+t_y_bottom,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_H.set_transform(glm.translate((0,-0.45+t_y_top,0)) * glm.translate((x_pos,0.09*i+0.45,th*2+1)))
+
+                elif m < unit*6:
+                    start_time = glfwGetTime() 
+                    
+                table.update_tree_global_transform()
+                draw_node(vao_chip, chip_of_H, VP, MVP_loc, color_loc, Chip_obj)
+
+            # Trnasforamtion 2 - User2: dia, heart, clover, chip
+            # set local transformation of each node
+            Trans1 = glm.translate((-7.5,7.18,3.5)) * glm.translate((-th*1.7,0,0)) * glm.rotate(th, (0,1,0)) * glm.translate((0,0,-1))
+            Trans2 = glm.translate((-7.5,7.24,3.5)) * glm.translate((th*1.7,0,0)) * glm.rotate(-th, (0,1,0)) * glm.translate((0,0,-1))
+            # cards 
+            dia.set_transform(Trans1)
+            heart.set_transform(Trans2)
+            clover.set_transform(glm.translate((-7.5,7.12,2.5-th*2)))
+            table.update_tree_global_transform()
+            # draw Cards
+            draw_node(vao_dia, dia, VP, MVP_loc, color_loc, Diamond_obj)
+            draw_node(vao_heart, heart, VP, MVP_loc, color_loc, Heart_obj)
+            draw_node(vao_clover, clover, VP, MVP_loc, color_loc, Clover_obj)
+            # chip suffle
+            m = glfwGetTime() - start_time
+            unit = 0.6
+            x_pos = 3.5
+            for i in range(5):
+                if m < unit:    # top: 오른쪽 아래 이동, 시계방향 회전
+                    t_x = 2*m
+                    t_y = m*0.75
+                    r = -m*50
+                    # 아래
+                    chip_of_C.set_transform(glm.translate((x_pos,0.09*i,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+                    # 위
+                    chip_of_C.set_transform(glm.translate((0,-t_y,0)) * glm.translate((x_pos+t_x,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(r), (0,0,1)))
+                    
+                elif m < unit*2:    # top: 반시계 방향 회전
+                    # 아래
+                    chip_of_C.set_transform(glm.translate((x_pos,0.09*i,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위 
+                    chip_of_C.set_transform(glm.translate((0,-0.45,0)) * glm.translate((x_pos+2*unit,0.09*i+0.45,th*2+1))*glm.rotate(np.radians((m-unit)*50-30), (0,0,1)))
+                    
+                elif m < unit*3:    # top: 시계 방향 회전
+                                    # bottom: 반시계 방향 회전
+                    r = -(m-2*unit)*50*i/5
+                    # 아래
+                    chip_of_C.set_transform(glm.translate((x_pos,0.09*i,th*2+1))* glm.rotate(np.radians(-r), (0,0,1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_C.set_transform(glm.translate((0,-0.45,0)) * glm.translate((x_pos+2*unit,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(unit*50-30+r), (0,0,1)))
+                elif m < unit*4:        # top: 오른쪽 이동, 시계 방향 회전
+                                        # bottom: 반시계 방향 회전
+                    t_x = -2*(m-3*unit)
+                    t_y_top = (m-3*unit)*0.15*(i+1)
+                    t_y_bottom = (m-3*unit)*0.15*i
+                    r = (m-3*unit)*50*i/5
+                    # 아래
+                    chip_of_C.set_transform(glm.translate((x_pos,0.09*i+t_y_bottom,th*2+1))* glm.rotate(np.radians(unit*50*i/5-r), (0,0,1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_C.set_transform(glm.translate((0,-0.45+t_y_top,0)) * glm.translate((x_pos+2*unit+t_x,0.09*i+0.45,th*2+1))* glm.rotate(np.radians(unit*50-30-unit*50*i/5+r), (0,0,1)))
+
+                elif m < unit*5:
+                    t_y_top = unit*0.15*(i+1)
+                    t_y_bottom = unit*0.15*i
+
+                    # 아래
+                    chip_of_C.set_transform(glm.translate((x_pos,0.09*i+t_y_bottom,th*2+1)))
+                    table.update_tree_global_transform()
+                    draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+
+                    # 위
+                    chip_of_C.set_transform(glm.translate((0,-0.45+t_y_top,0)) * glm.translate((x_pos,0.09*i+0.45,th*2+1)))
+
+                elif m < unit*6:
+                    start_time = glfwGetTime() 
+                    
+                table.update_tree_global_transform()
+                draw_node(vao_chip, chip_of_C, VP, MVP_loc, color_loc, Chip_obj)
+
+            # Trnasforamtion 3 - show down 3 cards
+            R = glm.rotate(np.radians(-20), (0,0,1))
+            Trans1 = glm.translate((3,7.12,0)) * R * T * S
+            Trans2 = glm.translate((3,7.17,0)) * R * T * S
+            Trans3 = glm.translate((3,7.22,0)) * R * T * S
+            Trans4 = glm.translate((3,7.27,0)) * R * T * S 
+            unit = 0.5
+            m = glfwGetTime() - start_time2
+            th = np.sin(m) + 1
+            d = 1
+            h = 0.2
+            size = 0.9
+            S = glm.scale((size, size, size))
+            T = glm.translate((-0.5,0,0))
+
+            for i in range(1):
+                if m < unit:
+                    R = glm.rotate(np.radians(-20+40*m), (0,0,1))
+                    Trans1 = glm.translate((3,7.12,0)) * R * T * S
+                    Trans2 = glm.translate((3,7.17,0)) * R * T * S
+                    Trans3 = glm.translate((3,7.22,0)) * R * T * S
+                    Trans4 = glm.translate((3,7.27,0)) * R * T * S 
+                elif m < 3*unit:
+                    t_x1 = (m-unit)*2
+                    t_x2 = (m-unit)/20
+                    Trans1 = glm.translate((3,7.12,0)) * T * S
+                    Trans2 = glm.translate((3-t_x1,7.17-t_x2,0)) * T * S
+                    Trans3 = glm.translate((3-t_x1*2,7.22-t_x2*2,0)) * T * S
+                    Trans4 = glm.translate((3-t_x1*3,7.27-t_x2*3,0)) * T * S
+                elif m < 4*unit:
+                    t_x1 = 4*unit
+                    t_x2 = unit/10
+                    Trans1 = glm.translate((3,7.12,0)) * T * S
+                    Trans2 = glm.translate((3-t_x1,7.17-t_x2,0)) * T * S
+                    Trans3 = glm.translate((3-t_x1*2,7.22-t_x2*2,0)) * T * S
+                    Trans4 = glm.translate((3-t_x1*3,7.27-t_x2*3,0)) * T * S
+                elif m < 6*unit:
+                    t_x1 = 4*unit
+                    t_x2 = unit/10
+                    t_x3 = (m-unit*4)*2
+                    t_x4 = (m-unit*4)/20
+                    Trans1 = glm.translate((3,7.12,0)) * T * S
+                    Trans2 = glm.translate((3-t_x1+t_x3,7.17-t_x2+t_x4,0)) * T * S
+                    Trans3 = glm.translate((3-t_x1*2+t_x3*2,7.22-t_x2*2+t_x4*2,0)) * T * S
+                    Trans4 = glm.translate((3-t_x1*3+t_x3*3,7.27-t_x2*3+t_x4*3,0)) * T * S
+                elif m < 7*unit:
+                    R = glm.rotate(np.radians(-40*(m-unit*6)), (0,0,1))
+                    Trans1 = glm.translate((3,7.12,0)) * R * T * S
+                    Trans2 = glm.translate((3,7.17,0)) * R * T * S
+                    Trans3 = glm.translate((3,7.22,0)) * R * T * S
+                    Trans4 = glm.translate((3,7.27,0)) * R * T * S 
+                elif m < 8*unit:
+                    R = glm.rotate(np.radians(-20), (0,0,1))
+                    Trans1 = glm.translate((3,7.12,0)) * R * T * S
+                    Trans2 = glm.translate((3,7.17,0)) * R * T * S
+                    Trans3 = glm.translate((3,7.22,0)) * R * T * S
+                    Trans4 = glm.translate((3,7.27,0)) * R * T * S 
+                elif m < 9*unit:
+                    start_time2 = glfwGetTime()   
+
+
+            # Trans1 = glm.translate((3,7.12,0)) * R * T * S
+            # Trans2 = glm.translate((3-d*th,7.17,0)) * R * T * S
+            # Trans3 = glm.translate((3-d*th*2,7.22,0)) * R * T * S
+            # Trans4 = glm.translate((3-d*th*3,7.27,0)) * R * T * S
+            spade.set_transform(Trans1)
+            dia.set_transform(Trans2)
+            heart.set_transform(Trans3)
+            clover.set_transform(Trans4)
+            table.update_tree_global_transform()
+            draw_node(vao_spade, spade, VP, MVP_loc, color_loc, Spade_obj)
+            draw_node(vao_dia, dia, VP, MVP_loc, color_loc, Diamond_obj)
+            draw_node(vao_heart, heart, VP, MVP_loc, color_loc, Heart_obj)
+            draw_node(vao_clover, clover, VP, MVP_loc, color_loc, Clover_obj)
+
 
         # swap front and back buffers
         glfwSwapBuffers(window)
